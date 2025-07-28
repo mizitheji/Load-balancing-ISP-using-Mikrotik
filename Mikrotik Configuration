@@ -1,0 +1,92 @@
+#Creates a virtual switch named Trunk that can be used to trunk VLANs via a physical interface (typically to a switch or router).
+/interface bridge
+add name=Trunk
+
+#Renames ether1 to ISP1, ether2 to ISP2, and ether3 to LAN for better readability. disable-running-check=no keeps link status active only if the cable is plugged in.
+/interface ethernet
+set [ find default-name=ether1 ] disable-running-check=no name=ISP1
+set [ find default-name=ether2 ] disable-running-check=no name=ISP2
+set [ find default-name=ether3 ] disable-running-check=no name=LAN
+
+#Adds the LAN interface to the Trunk bridge so that all VLAN traffic will traverse through this port.
+/interface bridge port
+add bridge=Trunk interface=LAN
+
+#Creates VLAN interfaces on top of the Trunk bridge for management (VLAN 1), and two user VLANs (10 and 20).
+/interface vlan
+add interface=Trunk name=Mgmt vlan-id=1
+add interface=Trunk name=V10 vlan-id=10
+add interface=Trunk name=V20 vlan-id=20
+
+#Assign IP Address to interfaces
+/ip address
+add address=192.168.19.101/25 interface=ISP2 network=192.168.19.0
+add address=172.31.10.1/24 interface=Mgmt network=172.31.10.0
+add address=192.168.19.129/25 interface=ISP1 network=192.168.19.128
+add address=192.168.10.1/24 interface=V10 network=192.168.10.0
+add address=192.168.20.1/24 interface=V20 network=192.168.20.0
+
+#Creates IP address pools for the DHCP server to lease IPs on each subnet.
+/ip pool
+add name=dhcp_pool0 ranges=172.31.10.2-172.31.10.254
+add name=dhcp_pool1 ranges=192.168.10.2-192.168.10.254
+add name=dhcp_pool2 ranges=192.168.20.2-192.168.20.254
+
+#Creates DHCP servers for the management and user VLANs.
+/ip dhcp-server
+add address-pool=dhcp_pool0 interface=Mgmt name=dhcp1
+add address-pool=dhcp_pool1 interface=V10 name=dhcp2
+add address-pool=dhcp_pool2 interface=V20 name=dhcp3
+
+#Defines gateway and DNS server options sent to DHCP clients.
+/ip dhcp-server network
+add address=172.31.10.0/24 dns-server=172.31.10.1,8.8.8.8,1.1.1.1 gateway=172.31.10.1
+add address=192.168.10.0/24 dns-server=192.168.10.1,8.8.8.8,1.1.1.1 gateway=192.168.10.1
+add address=192.168.20.0/24 dns-server=192.168.20.1,8.8.8.8,1.1.1.1 gateway=192.168.20.1
+
+#Defines DNS server the router will use for resolving domain names.
+/ip dns
+set servers=8.8.8.8
+
+#Creates two separate routing tables (FIBs) to allow policy-based routing (PCC load balancing).
+/routing table
+add fib name=ISP2
+add fib name=ISP1
+
+#Implements PCC (Per Connection Classifier) load balancing to split LAN traffic across two ISPs. Also marks traffic for policy routing.
+/ip firewall mangle
+add action=accept chain=prerouting comment="Exclude local traffic from load balancing." dst-address=192.168.19.0/25 in-interface=Trunk
+add action=accept chain=prerouting dst-address=192.168.19.128/25 in-interface=Trunk
+
+# Mark new connections from each ISP
+add action=mark-connection chain=prerouting connection-mark=no-mark in-interface=ISP1 new-connection-mark=ISP1_CONN
+add action=mark-connection chain=prerouting connection-mark=no-mark in-interface=ISP2 new-connection-mark=ISP2_CONN
+
+# Load balance from LAN using PCC
+add action=mark-connection chain=prerouting connection-mark=no-mark in-interface=Trunk new-connection-mark=ISP1_CONN per-connection-classifier=both-addresses:2/0
+add action=mark-connection chain=prerouting connection-mark=no-mark in-interface=Trunk new-connection-mark=ISP2_CONN per-connection-classifier=both-addresses:2/1
+
+# Apply routing marks
+add action=mark-routing chain=prerouting connection-mark=ISP1_CONN in-interface=Trunk new-routing-mark=ISP1
+add action=mark-routing chain=prerouting connection-mark=ISP2_CONN in-interface=Trunk new-routing-mark=ISP2
+
+# Mark output (router-generated) traffic
+add action=mark-routing chain=output connection-mark=ISP1_CONN new-routing-mark=ISP1
+add action=mark-routing chain=output connection-mark=ISP2_CONN new-routing-mark=ISP2
+
+#Allows private IPs to access the internet via both WAN interfaces.
+/ip firewall nat
+add action=masquerade chain=srcnat out-interface=ISP1
+add action=masquerade chain=srcnat out-interface=ISP2
+
+#Configure static route
+/ip route
+add disabled=no distance=2 dst-address=0.0.0.0/0 gateway=192.168.19.200 routing-table=main scope=30 suppress-hw-offload=no target-scope=10
+add dst-address=0.0.0.0/0 gateway=192.168.19.100 routing-table=main
+add dst-address=0.0.0.0/0 gateway=192.168.19.100 routing-table=ISP1
+add dst-address=0.0.0.0/0 gateway=192.168.19.200 routing-table=ISP2
+
+#Set basic firewall rules
+/ip firewall filter
+add action=drop chain=input comment="Drop Invalid" connection-state=invalid
+add action=accept chain=input comment="Accept established/related" connection-state=established,related
