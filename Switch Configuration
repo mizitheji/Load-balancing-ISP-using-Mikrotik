@@ -1,0 +1,158 @@
+Building configuration...
+
+Current configuration : 2227 bytes
+!
+! Last configuration change at 08:22:04 UTC Mon Jul 28 2025
+!
+version 17.12
+service timestamps debug datetime msec
+service timestamps log datetime msec
+!
+hostname SW1
+!
+boot-start-marker
+boot-end-marker
+!
+!
+logging discriminator EXCESS severity drops 6 msg-body drops EXCESSCOLL
+logging buffered 50000
+logging console discriminator EXCESS
+no aaa new-model
+!
+!
+!
+no ip icmp rate-limit unreachable
+!
+!
+!
+!
+!
+!
+!
+!
+!
+!
+ip audit notify log
+ip audit po max-events 100
+ip cef
+login on-success log
+no ipv6 cef
+!
+!
+!
+!
+!
+!
+!
+vtp version 1
+multilink bundle-name authenticated
+!
+crypto pki trustpoint TP-self-signed-2048001
+ enrollment selfsigned
+ subject-name cn=IOS-Self-Signed-Certificate-2048001
+ revocation-check none
+ rsakeypair TP-self-signed-2048001
+ hash sha256
+!
+!
+crypto pki certificate chain TP-self-signed-2048001
+ certificate self-signed 01
+        quit
+!
+!
+memory free low-watermark processor 54375
+!
+!
+spanning-tree mode rapid-pvst
+spanning-tree extend system-id
+!
+!
+vlan internal allocation policy ascending
+!
+!
+!
+!
+!
+interface Ethernet0/0
+ description To Mikrotik
+ switchport trunk encapsulation dot1q
+ switchport mode trunk
+!
+interface Ethernet0/1
+ description To V10
+ switchport access vlan 10
+ switchport mode access
+ spanning-tree portfast
+!
+interface Ethernet0/2
+ description To V1
+ switchport access vlan 10
+ switchport mode access
+ spanning-tree portfast
+!
+interface Ethernet0/3
+ description To V20
+ switchport access vlan 20
+ switchport mode access
+ spanning-tree portfast
+!
+interface Ethernet1/0
+!
+interface Ethernet1/1
+!
+interface Ethernet1/2
+!
+interface Ethernet1/3
+!
+interface Ethernet2/0
+!
+interface Ethernet2/1
+!
+interface Ethernet2/2
+!
+interface Ethernet2/3
+!
+interface Ethernet3/0
+!
+interface Ethernet3/1
+!
+interface Ethernet3/2
+!
+interface Ethernet3/3
+!
+interface Vlan1
+ ip address 172.31.10.2 255.255.255.0
+ ip helper-address 172.31.10.1
+!
+ip default-gateway 172.31.10.1
+ip forward-protocol nd
+!
+!
+ip tcp synwait-time 5
+ip http server
+ip http secure-server
+ip ssh bulk-mode 131072
+!
+!
+!
+!
+!
+!
+control-plane
+!
+!
+!
+line con 0
+ exec-timeout 0 0
+ privilege level 15
+ logging synchronous
+line aux 0
+ exec-timeout 0 0
+ privilege level 15
+ logging synchronous
+line vty 0 4
+ login
+ transport input ssh
+!
+!
+end
